@@ -3,15 +3,20 @@
   :url "http://example.com/FIXME"
   :license {:name "EPL-2.0 OR GPL-2.0-or-later WITH Classpath-exception-2.0"
             :url "https://www.eclipse.org/legal/epl-2.0/"}
-  :dependencies [[org.clojure/clojure "LATEST"]
+  :dependencies [[com.clojure-goes-fast/clj-async-profiler "1.2.2"]
+                 [org.clojure/clojure "LATEST"]
                  [net.minestom/minestom-snapshots "a521c4e7cd"] ; known working on a521c4e7cd
                  [com.github.EmortalMC/Rayfast "1.0.0"]
                  [ch.qos.logback/logback-core "1.5.7"]
-                 ]
-  :repositories [["https://jitpack.io" "https://jitpack.io"]]
+                 [net.worldseed.multipart/WorldSeedEntityEngine "11.0.7"]
+                 [cpath-clj "0.1.2"]]
+  :repositories [["https://jitpack.io" "https://jitpack.io"]
+                 ["https://reposilite.worldseed.online/public" "https://reposilite.worldseed.online/public"]]
   :main ^:skip-aot minestorm.core
   :target-path "target/%s"
-
+  :aliases {"debug" ["run" "-m" "minestorm.debug/main"]
+            "pack" ["run" "-m" "minestorm.pack/mk"]}
+  :jvm-opts ["-Djdk.attach.allowAttachSelf" "-XX:+EnableDynamicAgentLoading"]
 
   :profiles {:uberjar {:aot :all
                        :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
@@ -82,4 +87,5 @@
                         "--initialize-at-run-time=net.minestom.server.sound.BuiltinSoundEvent"
                         "--initialize-at-run-time=net.minestom.server.instance.InstanceContainer"
                         "--initialize-at-run-time=net.minestom.server.instance.anvil.AnvilLoader"]}  
-  :plugins [[io.taylorwood/lein-native-image "0.3.1"]])
+  :plugins [[io.taylorwood/lein-native-image "0.3.1"]
+            ])

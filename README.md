@@ -1,27 +1,19 @@
 # minestorm
 
-FIXME: description
+tnt phys simulator, similar to unstructure
 
 ## Installation
 
-Download from http://example.com/FIXME.
+Download from https://github.com/Connorppeach/deconstruct-minestom
 
 ## Usage
 
-FIXME: explanation
+install leinagan
 
     $ java -jar minestorm-0.1.0-standalone.jar [args]
 
-## Options
-
-FIXME: listing of options this app accepts.
-
-## Examples
-
-...
-
 ### Bugs
-
+lame readme, somebody can flesh this out if they care, i will accept prs to this readme
 ...
 
 ### Any Other Sections
@@ -30,7 +22,7 @@ FIXME: listing of options this app accepts.
 
 ## License
 
-Copyright © 2024 FIXME
+Copyright © 2024 Valerie peach
 
 This program and the accompanying materials are made available under the
 terms of the Eclipse Public License 2.0 which is available at
