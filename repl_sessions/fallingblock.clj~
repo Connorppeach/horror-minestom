@@ -1,0 +1,3 @@
+(let (.getOnlinePlayerByUsername (MinecraftServer/getConnectionManager) ".Matunia1234king"))
+(def block )
+(barftnt (.getOnlinePlayerByUsername (MinecraftServer/getConnectionManager) ".Matunia1234king") 20)

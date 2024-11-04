@@ -1,23 +1,36 @@
 (ns minestorm.core
   (:gen-class)
-  (:require [minestorm.generators :as gen]
+  (:require [minestorm.explode :as expl]
+            [minestorm.generators :as gen]
             [minestorm.commands :as cmds]
             [minestorm.constants :as consts]
             [minestorm.pack :as pack]
+            [minestorm.db :as db]
+            [minestorm.gui :as gui]
+            [minestorm.filter :as chatfilter]
+            [minestorm.mainworld :as mworld]
+            [minestorm.plots :as pworld]
             [minestorm.steve :as steve]
+            [nrepl.server :as nrepl-server]
+            ;[cider.nrepl :as cider]
             )
   (:import [net.minestom.server MinecraftServer] ;minestorm
            [net.minestom.server.instance Instance InstanceContainer InstanceManager IChunkLoader]
+           [net.minestom.server.instance.block.rule BlockPlacementRule BlockPlacementRule$UpdateState BlockPlacementRule$PlacementState]
            [net.minestom.server.event GlobalEventHandler]
            [net.minestom.server.event.player AsyncPlayerConfigurationEvent]
-           [net.minestom.server.instance.block Block]
+           [net.minestom.server.instance.block Block BlockFace]
            [net.minestom.server.coordinate Vec Pos Point]
+           [net.minestom.server.event.player PlayerMoveEvent PlayerBlockPlaceEvent]
+           [net.minestom.server.extras MojangAuth]
+           [net.minestom.server.extras.velocity VelocityProxy]
+           [net.minestom.server.utils MathUtils]
                                         ; entitys
-           [net.minestom.server.entity EntityType Entity Player EntityCreature]
+           [net.minestom.server.entity EntityType Entity Player Player$Hand EntityCreature]
            
            [net.minestom.server.utils.time TimeUnit]
            [net.minestom.server.entity.metadata.display BlockDisplayMeta]
-           [net.minestom.server.timer TaskSchedule]
+
            [net.minestom.server.item ItemStack Material]
                                         ;fastnoise
            [net.kyori.adventure.resource ResourcePackRequest ResourcePackRequest$Builder ResourcePackInfo ResourcePackInfoLike]
@@ -26,7 +39,9 @@
            [dev.emortal.rayfast.casting.grid GridCast]
            [dev.emortal.rayfast.vector Vector3d]
            [net.worldseed.multipart ModelEngine]
-                                        ;java 
+                                        ;java
+           [net.minestom.server.network.packet.server.play SetCooldownPacket]
+           [net.minestom.server.utils.time Cooldown]
            
            ))
 
@@ -34,194 +49,156 @@
 
 
 
-(defn deletefn
-  [mentry iters]
-  nil)
-(defn bouncefn
-  [mentry iters]
-  (.teleport  ^Entity (:entity mentry) (.add (.getPosition ^Entity (:entity mentry)) 0.0 (+ (float (:y (:velocity mentry))) 1) 0.0))
-  
-  (if (nil? (:bcount mentry))
-    (assoc-in (assoc mentry :bcount 2) [:velocity :y] 1)
-    (if (> (:bcount mentry) 0)
-      (assoc-in (update mentry :bcount - 0.5) [:velocity :y] (/ (:bcount mentry) 2))
-      nil)
-    ))
-(defn stockmove
-  [mentry iters]
-  (.setVelocity ^Entity (:entity mentry) (Vec. 0.0))
-  (.teleport  ^Entity (:entity mentry)
-              (.withView
-               (.add (.getPosition ^Entity (:entity mentry)) (float (:x (:velocity mentry))) (float (:y (:velocity mentry))) (float (:z (:velocity mentry))))
-               (+ (.yaw (.getPosition ^Entity (:entity mentry))) (:yaw (:velocity mentry))) (+ (:pitch (:velocity mentry)) (.pitch (.getPosition ^Entity (:entity mentry))))))
-  (update-in mentry [:velocity :y] #(max -1 (- % 0.05))))
-(defn dloop
-  [mmap speed iterations movfn colfn]
-  (let [mvec (vec (remove nil? (for [mentry mmap] 
-                                 (do 
-                                   (if (not (.isAir (.getBlock (.getInstance  ^Entity (:entity mentry)) (.getPosition  ^Entity (:entity mentry)))))
-                                     (or (colfn mentry iterations) (.remove ^Entity (:entity mentry)))
-                                     (movfn mentry iterations))))))]
-    (if (not (nil? (:entity (first mvec))))
-      (.scheduleTask (.scheduler ^Entity (:entity (first mvec)))
-                     (reify Runnable
-                       (run [this]
-                         (dloop mvec speed iterations movfn colfn)
-                         )) (TaskSchedule/tick speed) (TaskSchedule/stop)))))
-(defn circle
-  [r]
-  (let [r (min r 18)]
-  (loop [pointlist '()
-         x (atom (long r))
-         y (atom (long 0))
-         P (atom (long (- r 1)))]
-    (reset! y (+ @y 1))
-    (if (<= @P 0)
-      (reset! P (+ (* (+ @P 2) @y) 1))
-      (do
-        (reset! x (- @x 1))
-         (reset! P (+ (* (- (* (+ @P 2) @y) 2) @x) 1)))
-      )
-    (if (< @x @y)
-      (rest pointlist)
-      (recur
-       (list*
-        {:x @x :z @y} {:x (- @x) :z @y} {:x @x :z (- @y)} {:x (- @x) :z (- @y)}  {:x @y :z @x} {:x (- @y) :z @x} {:x @y :z (- @x)} {:x (- @y) :z (- @x)}
-        pointlist
-        )
-       x y P
-       )
-      )
-    )
-  ))
-(defn circle3d
-  [r]
-  (loop [pointlist '()
-         y (- r)]
-    (if (> y r)
-      pointlist
-      (recur
-       (list* (map #(assoc % :y y)
-                   (apply vector (circle (- (abs r) (abs y))))) pointlist)
-       (+ y 1.4)))
-    ))
-
-(defn explodefn
-  [mentry iters]
-  (let [point (.getPosition ^Entity (:entity mentry))]
-    (dloop (remove nil? (vec (flatten (for [current (circle3d @consts/power)
-                                            rpos current]
-                                        (let [iterator (GridCast/createGridIterator (.x point) (.y point) (.z point) (:x rpos) (:y rpos) (:z rpos) 1.0 @consts/power)]
-                                          (loop [power @consts/power vlist []]
-                                            (if (and (< 0 power) (.hasNext iterator))
-                                              (let [n ^Vector3d (.next iterator)]
-                                                (let [old (.getBlock (.getInstance ^Entity (:entity mentry)) (float (.x n)) (float (.y n)) (float (.z n)))]
-                                                  (recur (long (- power (+ (rand-int 2) (.explosionResistance (.registry old)))))
-                                                         (conj vlist
-                                                               (if (not (.isAir old))
-                                                                 (do (let [e ^Entity (proxy  [Entity]
-                                                                                         [EntityType/BLOCK_DISPLAY])
-                                                                           pos ^Pos (.getPosition ^Entity (:entity mentry))
-                                                                           instance ^Instance (.getInstance ^Entity (:entity mentry))]
-                                                                       (.setNoGravity  ^Entity e true)
-                                                                       (.setPosRotInterpolationDuration ^BlockDisplayMeta (.getEntityMeta e) 2)
-                                                                       (.setBlockState ^BlockDisplayMeta (.getEntityMeta e) old)
-                                                                       (.setInstance  ^Entity e  ^Instance instance (Pos. (float (.x n)) (float (.y n)) (float (.z n)) (- (rand-int 360) 180) (- (rand-int 360) 180)))
-                                                                       (.setBlock instance (float (.x n)) (float (.y n)) (float (.z n)) Block/AIR)
-                                                                       (.scheduleTask (.scheduler instance)
-                                                                                      (reify Runnable
-                                                                                        (run [this]
-                                                                                          (.setBlock instance (float (.x n)) (float (.y n)) (float (.z n)) old)
-
-                                                                                          )) (TaskSchedule/tick (+ 40 (rand-int 10))) (TaskSchedule/stop))
-                                                                       {:entity e :velocity {:x (/ (- (.x n) (.x pos)) 10) :y (/ (+ 5 (- (.y n) (.y pos))) 5) :z (/ (- (.z n) (.z pos)) 10) :pitch (- 3 (rand-int 6)) :yaw (- 3 (rand-int 6))}}))))))) vlist)))
-                                        )))) 1 0 stockmove bouncefn)) nil)
-
-(defn summon-tnt
-  [instance pos d]
-
-  (let [p ^Entity (proxy  [Entity]
-                      [EntityType/BLOCK_DISPLAY])]
-    (.setNoGravity  ^Entity p true)
-    (.setBlockState ^BlockDisplayMeta (.getEntityMeta p) Block/TNT)
-    (.setInstance  ^Entity p  ^Instance instance ^Pos pos)
-    (.setPosRotInterpolationDuration ^BlockDisplayMeta (.getEntityMeta p) 2)
-    (dloop [{:entity p :velocity d}] 1 0 stockmove explodefn)))
 
 
-
+(def server (atom nil))
+(def iManager (atom nil))
+(def instance (atom nil))
 (defn -main
   "main"
   [& args]
-  (def server (MinecraftServer/init))
-  (def iManager (MinecraftServer/getInstanceManager))
-  (def instance (.createInstanceContainer ^InstanceManager iManager))
-  
+  (reset! server (MinecraftServer/init))
+  (reset! iManager (MinecraftServer/getInstanceManager))
+  (reset! instance (mworld/mkworld @iManager "./data/worlds/main"))
   (gen/init)
-
-                                        ;pack
+  (db/initdb)
+  (chatfilter/mkfilter)
+  (println "server has started up")
   (pack/init)
-
-  
+  (if (nil? (System/getenv "FABRIC_PROXY_SECRET"))
+    (MojangAuth/init)
+    (VelocityProxy/enable (System/getenv "FABRIC_PROXY_SECRET")))
   (def gEventHandler (MinecraftServer/getGlobalEventHandler))
-  (.setChunkLoader  ^InstanceContainer instance ^IChunkLoader (AnvilLoader. "worlds/test"))
-  (.setChunkSupplier ^Instance instance
-                     (reify
-                       net.minestom.server.utils.chunk.ChunkSupplier
-                       (createChunk [this instance chunkx chunky]
-                         (net.minestom.server.instance.LightingChunk. instance chunkx chunky))))
-  (.setGenerator ^Instance instance
-                 (gen/mkgen))
-
   (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.player.AsyncPlayerConfigurationEvent
                 (reify
                   java.util.function.Consumer
                   (accept [this event]
-                    (.setSpawningInstance ^net.minestom.server.event.player.AsyncPlayerConfigurationEvent event ^Instance instance)
+                    (.setSpawningInstance ^net.minestom.server.event.player.AsyncPlayerConfigurationEvent event ^Instance @instance)
                     (.setRespawnPoint (.getPlayer ^net.minestom.server.event.player.AsyncPlayerConfigurationEvent event) ^Point (Pos. 0.0 160.0 0.0)))))
 
 
-  (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.player.PlayerChunkUnloadEvent
+  (.addListener ^GlobalEventHandler gEventHandler PlayerMoveEvent
                 (reify
                   java.util.function.Consumer
                   (accept [this event]
-                    (let [event ^net.minestom.server.event.player.PlayerChunkUnloadEvent event]
+                    (let [event ^PlayerMoveEvent event]
                       (if (not= nil (.getInstance event))
-                        (let [chunk (.getChunk ^InstanceContainer (.getInstance event) (.getChunkX event) (.getChunkZ event))
-                              instance ^InstanceContainer (.getInstance event)]
-                          (if (and (not= instance nil) (not= chunk nil) (= (.size ^java.util.Set (.getViewers chunk)) 0))
-                            (.saveChunkToStorage instance chunk)
-                            (.unloadChunk instance chunk))))))))
-
+                        (let [instance ^InstanceContainer (.getInstance event)
+                              blockat (.getBlock instance (.add (.getNewPosition event) 0.0 1.0 0.0))]
+                          (if (and (not (.isAir blockat)) (.isSolid blockat))
+                            (.get (.teleport (.getPlayer event) (loop [pos (.getNewPosition event)]
+                              (if (.isAir (.getBlock instance pos))
+                                pos
+                                (recur (.add pos 0.0 1.0 0.0))
+                                )
+                              )))
+                            
+                            )))))))
+  (def cooldowns (atom {}))
+  
   (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.player.PlayerSpawnEvent
                 (reify
                   java.util.function.Consumer
                   (accept [this event]
-                    (.setGameMode ^Player (.getPlayer ^net.minestom.server.event.player.PlayerSpawnEvent event) net.minestom.server.entity.GameMode/CREATIVE)
-                    (.sendResourcePacks
-                     ^Player (.getPlayer ^net.minestom.server.event.player.PlayerSpawnEvent event)
+                    (let [player ^Player  (.getPlayer ^net.minestom.server.event.player.PlayerSpawnEvent event)]
+                    (.setGameMode  player net.minestom.server.entity.GameMode/SURVIVAL)
+                     (db/add-prop-if-nil! (.getUsername player) :level 0)
+                     (if (= (first (.getUsername player)) \.)
+                       (db/add-prop-if-nil! (.getUsername player) :blockstyle "falling")
+                       (db/add-prop-if-nil! (.getUsername player) :blockstyle "display"))
+                     (db/add-prop-if-nil! (.getUsername player) :power 3)
+                     (db/add-prop-if-nil! (.getUsername player) :banned false)
+                     (db/add-prop-if-nil! (.getUsername player) :trust 0.17)
+                     (db/add-prop-if-nil! (.getUsername player) :blocks-broken 0)
+                     (db/add-prop-if-nil! (.getUsername player)  :dropstyle "reg")
+                     (if (db/get-prop (.getUsername player) :banned)
+                       (.kick player "banned for something;  \nTODO: add reason"))
+                     (.setLevel player (db/get-prop (.getUsername player) :level))
+                     (.setExp player (- (db/get-prop (.getUsername player) :level) (int (db/get-prop (.getUsername player) :level))))
+                     (.setItemInHand player Player$Hand/MAIN (ItemStack/of Material/TNT))
+                     (.addItemStack (.getInventory player) (ItemStack/of Material/NETHER_STAR))
+                     (.addItemStack (.getInventory player) (ItemStack/of Material/BOOK))
+                     (.setInstantBreak player true)
+                     (reset! cooldowns (assoc @cooldowns (keyword (.getUsername player)) (System/currentTimeMillis)))
+                     (.setAllowFlying player true)
+                    (.sendResourcePacks player
                      (let [b ^ResourcePackRequest$Builder (ResourcePackRequest/resourcePackRequest)]
                        (.required b true)
                        (.replace b true)
-                       (.packs b ^ResourcePackInfoLike [(.get (.computeHashAndBuild (.uri (ResourcePackInfo/resourcePackInfo) (java.net.URI/create "https://github.com/Connorppeach/deconstruct-minestom/releases/download/v0.0.1/pack.zip"))))])
+                       (.packs b ^ResourcePackInfoLike [(.get (.computeHashAndBuild (.uri (ResourcePackInfo/resourcePackInfo) (java.net.URI/create "https://github.com/Connorppeach/deconstruct-minestom/raw/refs/heads/main/test/pack.zip"))))]);https://github.com/Connorppeach/deconstruct-minestom/releases/download/v0.0.1/pack.zip 
                        ^ResourcePackRequest (.build b)
                        )
-                     ))))
-
+                     )))))
   (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.player.PlayerHandAnimationEvent
                 (reify
                   java.util.function.Consumer
                   (accept [this event]
                     (let [sender ^Player (.getPlayer ^net.minestom.server.event.player.PlayerHandAnimationEvent event)]
-                      (if (= Material/TNT (.material (.getItemInMainHand ^Player (.getPlayer ^net.minestom.server.event.player.PlayerHandAnimationEvent event) )))
-                        (summon-tnt ^Instance (.getInstance sender) ^Pos (.getPosition sender)
-                                    (let [pos (.direction (.getPosition sender))]
-                                      {:x (.x pos) :y (+ (.y pos) 0.5) :z (.z pos) :pitch (- 3 (rand-int 6)) :yaw (- 3 (rand-int 6))})))))))
-  
+                      
+                      (if (= Material/TNT (.material (.getItemInMainHand ^Player (.getPlayer  ^net.minestom.server.event.player.PlayerHandAnimationEvent event) )))
+                        (do ;(.setCancelled ^net.minestom.server.event.player.PlayerHandAnimationEvent event true) does nothing
+                          (if (> (- (System/currentTimeMillis) (get @cooldowns (keyword (.getUsername sender)))) 250)
+                          (do
+                            (.sendPacket sender (SetCooldownPacket. (.id Material/TNT) 5))
+                            (reset! cooldowns (assoc @cooldowns (keyword (.getUsername sender)) (System/currentTimeMillis)))
+                            (expl/summon-tnt ^Instance (.getInstance sender) ^Pos (.getPosition sender)
+                                             (let [pos (.direction (.getPosition sender))]
+                                               {:x (.x pos) :y (+ (.y pos) 0.5) :z (.z pos) :pitch (- 3 (rand-int 6)) :yaw (- 3 (rand-int 6))})
+                                             #(do
+                                                (db/set-prop! (.getUsername sender) :blocks-broken (+ (db/get-prop (.getUsername sender) :blocks-broken) %))
+                                                (db/set-prop! (.getUsername sender) :level (/ (Math/sqrt (db/get-prop (.getUsername sender) :blocks-broken)) 10))
+                                                (.setLevel sender (int (db/get-prop (.getUsername sender) :level)))
+                                                (.setExp sender (- (db/get-prop (.getUsername sender) :level) (int (db/get-prop (.getUsername sender) :level)))))
+                                             (db/get-prop (.getUsername sender) :power)
+                                             (db/get-prop (.getUsername sender) :dropstyle))))))
+                      (if (= Material/BOOK (.material (.getItemInMainHand ^Player (.getPlayer  ^net.minestom.server.event.player.PlayerHandAnimationEvent event) )))
+                        (.openInventory sender (gui/blockselectors 0))
+                        )
+                      (if (= Material/NETHER_STAR (.material (.getItemInMainHand ^Player (.getPlayer  ^net.minestom.server.event.player.PlayerHandAnimationEvent event) )))
+                        (.openInventory sender (gui/mainmenu #(.closeInventory ^Player (.getPlayer  ^net.minestom.server.event.player.PlayerHandAnimationEvent event))))
+                        )))))
 
+  (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.player.PlayerChatEvent
+                @chatfilter/filter)
+  (.addListener ^GlobalEventHandler gEventHandler PlayerBlockPlaceEvent
+                (reify
+                  java.util.function.Consumer
+                  (accept [this event]
+                    (let [sender ^Player (.getPlayer ^PlayerBlockPlaceEvent event)]
+                      (.consumeBlock ^PlayerBlockPlaceEvent event false)
+                      (if (= Block/TNT (.getBlock ^PlayerBlockPlaceEvent event))
+                        (.setCancelled ^PlayerBlockPlaceEvent event true)
+                        )
+                      ))))
+
+  (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.item.ItemDropEvent
+                (reify
+                  java.util.function.Consumer
+                  (accept [this event]
+                    (let [sender ^Player (.getPlayer ^net.minestom.server.event.item.ItemDropEvent event)]
+                      (if (or (= Material/NETHER_STAR (.material (.getItemStack ^net.minestom.server.event.item.ItemDropEvent event))) (= Material/BOOK (.material (.getItemStack ^net.minestom.server.event.item.ItemDropEvent event))) (= Material/TNT (.material (.getItemStack ^net.minestom.server.event.item.ItemDropEvent event))) )
+                        (.setCancelled ^net.minestom.server.event.item.ItemDropEvent event true)
+                        )
+                      ))))
   
-  (cmds/init instance)
+  (defn rotatebyplacement
+    [block]
+    (let [p 
+        (proxy [BlockPlacementRule] [block]
+          (blockUpdate [^BlockPlacementRule$UpdateState b] (.currentBlock b))
+          (blockPlace [^BlockPlacementRule$PlacementState b]
+            (if (not (or (= (String/valueOf (.blockFace b)) "TOP") (= (String/valueOf (.blockFace b)) "BOTTOM")))
+              (.withProperty (.block b) "facing" (.toLowerCase (String/valueOf (.blockFace b))))
+              (.withProperty (.block b) "facing" (.toLowerCase (String/valueOf (MathUtils/getHorizontalDirection (.yaw (.playerPosition b)))))))))]
+      (.registerBlockPlacementRule (MinecraftServer/getBlockManager) p)))
+  
+  (doseq [block [Block/ACACIA_STAIRS Block/ANDESITE_STAIRS Block/ANDESITE_STAIRS Block/POLISHED_BLACKSTONE_BRICK_STAIRS Block/POLISHED_BLACKSTONE_STAIRS Block/POLISHED_DEEPSLATE_STAIRS
+                 Block/POLISHED_DIORITE_STAIRS Block/POLISHED_GRANITE_STAIRS Block/POLISHED_TUFF_STAIRS Block/PRISMARINE_BRICK_STAIRS Block/PRISMARINE_STAIRS Block/PURPUR_STAIRS Block/QUARTZ_STAIRS Block/RED_NETHER_BRICK_STAIRS Block/RED_SANDSTONE_STAIRS Block/SANDSTONE_STAIRS Block/SMOOTH_QUARTZ_STAIRS Block/SMOOTH_RED_SANDSTONE_STAIRS Block/SMOOTH_SANDSTONE_STAIRS Block/SPRUCE_STAIRS Block/STONE_BRICK_STAIRS Block/STONE_STAIRS Block/TUFF_BRICK_STAIRS Block/TUFF_STAIRS Block/WARPED_STAIRS Block/WAXED_CUT_COPPER_STAIRS Block/WAXED_EXPOSED_CUT_COPPER_STAIRS Block/WAXED_OXIDIZED_CUT_COPPER_STAIRS Block/WAXED_WEATHERED_CUT_COPPER_STAIRS Block/WEATHERED_CUT_COPPER_STAIRS Block/OAK_STAIRS Block/COBBLESTONE_STAIRS Block/BRICK_STAIRS Block/STONE_BRICK_STAIRS]]
+    (rotatebyplacement block))
+  (cmds/init @iManager)
+  (nrepl-server/start-server :bind "0.0.0.0" :port 7889)
                                         ;(net.minestom.server.extras.velocity.VelocityProxy/enable "hXt2TN42ucml"); REPLACE ME WITH YOUR OWN KEY TO USE VELOCITY
-  (.start ^MinecraftServer server "0.0.0.0" 25565)
+    (.start ^MinecraftServer @server "0.0.0.0" 25575)
+  
   )
 

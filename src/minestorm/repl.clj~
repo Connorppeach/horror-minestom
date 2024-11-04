@@ -1,0 +1,1 @@
+  (defonce server2 (start-server :bind "0.0.0.0" :port 23232 :handler cider-nrepl-handler))

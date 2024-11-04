@@ -5,22 +5,33 @@
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[com.clojure-goes-fast/clj-async-profiler "1.2.2"]
                  [org.clojure/clojure "LATEST"]
-                 [net.minestom/minestom-snapshots "a521c4e7cd"] ; known working on a521c4e7cd
+                 [net.minestom/minestom-snapshots "0ca1dda2fe"] ; known working on 0ca1dda2fe
+                 [datalevin "0.9.12"]
+                 [thi.ng/geom "1.0.1"]
+                 [dev.hollowcube/polar "1.11.3"]
+                 [dev.hollowcube/schem "1.2.0"]
                  [com.github.EmortalMC/Rayfast "1.0.0"]
-                 [ch.qos.logback/logback-core "1.5.7"]
+                 [clj-http "3.13.0"]
+                 [org.clojure/data.json "2.5.0"]
                  [net.worldseed.multipart/WorldSeedEntityEngine "11.0.7"]
-                 [cpath-clj "0.1.2"]]
+                 [cpath-clj "0.1.2"]
+                 [com.github.CoolLoong/FastNoise2Bindings-Java "0.0.1"]
+                 [nrepl/nrepl "1.3.0"]
+                 [cider/cider-nrepl "0.50.2"]]
   :repositories [["https://jitpack.io" "https://jitpack.io"]
                  ["https://reposilite.worldseed.online/public" "https://reposilite.worldseed.online/public"]]
   :main ^:skip-aot minestorm.core
   :target-path "target/%s"
   :aliases {"debug" ["run" "-m" "minestorm.debug/main"]
             "pack" ["run" "-m" "minestorm.pack/mk"]}
-  :jvm-opts ["-Djdk.attach.allowAttachSelf" "-XX:+EnableDynamicAgentLoading"]
+  :jvm-opts ["--add-opens=java.base/java.nio=ALL-UNNAMED"
+             "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+             "-Djdk.attach.allowAttachSelf" "-XX:+EnableDynamicAgentLoading"]
 
   :profiles {:uberjar {:aot :all
-                       :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
-             :jar {:aot :all}
+                       :jvm-opts ["-Dclojure.compiler.direct-linking=true"
+                                  "--add-opens=java.base/java.nio=ALL-UNNAMED"
+                                  "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"]}
              :dev {:plugins [[lein-shell "0.5.0"]]}}
   :native-image {:name "minestorm"                 ;; name of output image, optional
                  :opts ["--verbose" "--initialize-at-build-time"

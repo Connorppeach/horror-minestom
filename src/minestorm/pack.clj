@@ -1,5 +1,4 @@
 (ns minestorm.pack
-  (:gen-class)
   (:require [clojure.java.io :as io])
   (:import [net.minestom.server MinecraftServer]
            [net.worldseed.multipart ModelEngine] ;model reader

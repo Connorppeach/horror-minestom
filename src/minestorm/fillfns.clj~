@@ -1,0 +1,23 @@
+(defn gen-tree
+  [x y z unit start top bottom biome]
+  (.fork ^GenerationUnit unit
+         (reify
+           java.util.function.Consumer
+           (accept [this setter]
+             (doseq [y2 (range -4 3)
+                     x2 (range -2 3)
+                     z2 (range -2 3)
+                     :when (and (< (if (< z2 0) (- z2) z2) (- y2)) (< (if (< x2 0) (- x2) x2) (- y2)))]
+               (.setBlock ^Block$Setter setter (float (+ x x2)) (float (+ y y2 8)) (float (+ z z2)) top))
+             (doseq [y (range y (+ y 5))]
+               (.setBlock ^Block$Setter setter (float x) (float y) (float z) bottom)
+               )
+             )
+           )))
+(defn gen-grass
+  [x y z unit]
+  (.fork ^GenerationUnit unit
+         (reify
+           java.util.function.Consumer
+           (accept [this setter]
+             (.setBlock ^Block$Setter setter (float x) (float (+ y 1)) (float z) Block/SHORT_GRASS)))))

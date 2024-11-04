@@ -1,4 +1,9 @@
 (ns minestorm.constants
-  (:gen-class))
+  )
+(def seed (atom 0))
+(def power (atom 4))
 
-(def power (atom 1))
+(def yeild (atom 4))
+
+
+
