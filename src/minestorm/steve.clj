@@ -85,7 +85,11 @@
                                           (expl/summon-tnt
                                             ^Instance (.getInstance entity) ^Pos handpos
                                             (let [pos (.normalize (.asVec (.sub (.getPosition target) handpos)))]
-                                              {:x (.x pos) :y (+ (.y pos) 0.5) :z (.z pos) :pitch (- 3 (rand-int 6)) :yaw (- 3 (rand-int 6))})))))
+                                              {:x (.x pos) :y (+ (.y pos) 0.5) :z (.z pos) :pitch (- 3 (rand-int 6)) :yaw (- 3 (rand-int 6))})
+                                            #(do nil)
+                                            4
+                                            "reg"
+                                            ))))
 
   )
 (defn mkthrowgoal
@@ -115,13 +119,13 @@
                 (if (not (nil? (.getTarget entity)))
                   (let [tpos (.getPosition (.getTarget entity))]
                     (.lookAt entity tpos)
-                    (if (not= (.getPlaying animationHandler) "throw")
+                    (if (not= (.getPlaying animationHandler) "attack")
                       (throw-ranged entity (.add (.getPosition entity) 0.0 1.0 0.0)  animationHandler (.getTarget entity)))
                     ))))
             (shouldEnd []
               (> (.distance (.getPosition entity) (.getPosition ^EntityCreature @target)) 12))
             (end []
-              (.stopRepeat animationHandler "throw")
+              (.stopRepeat animationHandler "attack")
               (.playRepeat animationHandler "idle")
               (reset! forceEnd false))
             )]
