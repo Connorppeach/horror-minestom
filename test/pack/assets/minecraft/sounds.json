@@ -1,4 +1,4 @@
 {
-    "entity.hurt":{"sounds":["mine:hurt"]}
+    "entity.hurt":{"sounds":["mine:hurt"]},
     "music.boss":{"sounds":["mine:boss"]}
 }
