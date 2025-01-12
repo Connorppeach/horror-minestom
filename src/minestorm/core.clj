@@ -1,15 +1,10 @@
 (ns minestorm.core
   (:gen-class)
-  (:require [minestorm.explode :as expl]
-            [minestorm.generators :as gen]
-            [minestorm.commands :as cmds]
+  (:require [minestorm.commands :as cmds]
             [minestorm.constants :as consts]
             [minestorm.pack :as pack]
             [minestorm.db :as db]
-            [minestorm.gui :as gui]
-            [minestorm.filter :as chatfilter]
             [minestorm.mainworld :as mworld]
-            [minestorm.plots :as pworld]
             [minestorm.steve :as steve]
             [nrepl.server :as nrepl-server]
             ;[cider.nrepl :as cider]
@@ -60,9 +55,7 @@
   (reset! server (MinecraftServer/init))
   (reset! iManager (MinecraftServer/getInstanceManager))
   (reset! instance (mworld/mkworld @iManager "./data/worlds/main"))
-  (gen/init)
   (db/initdb)
-  (chatfilter/mkfilter)
   (println "server has started up")
   (pack/init)
   (if (nil? (System/getenv "FABRIC_PROXY_SECRET"))
@@ -77,23 +70,7 @@
                     (.setRespawnPoint (.getPlayer ^net.minestom.server.event.player.AsyncPlayerConfigurationEvent event) ^Point (Pos. 0.0 160.0 0.0)))))
 
 
-  (.addListener ^GlobalEventHandler gEventHandler PlayerMoveEvent
-                (reify
-                  java.util.function.Consumer
-                  (accept [this event]
-                    (let [event ^PlayerMoveEvent event]
-                      (if (not= nil (.getInstance event))
-                        (let [instance ^InstanceContainer (.getInstance event)
-                              blockat (.getBlock instance (.add (.getNewPosition event) 0.0 1.0 0.0))]
-                          (if (and (not (.isAir blockat)) (.isSolid blockat))
-                            (.get (.teleport (.getPlayer event) (loop [pos (.getNewPosition event)]
-                              (if (.isAir (.getBlock instance pos))
-                                pos
-                                (recur (.add pos 0.0 1.0 0.0))
-                                )
-                              )))
-                            
-                            )))))))
+  
   (def cooldowns (atom {}))
   
   (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.player.PlayerSpawnEvent
@@ -129,57 +106,10 @@
                        ^ResourcePackRequest (.build b)
                        )
                      )))))
-  (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.player.PlayerHandAnimationEvent
-                (reify
-                  java.util.function.Consumer
-                  (accept [this event]
-                    (let [sender ^Player (.getPlayer ^net.minestom.server.event.player.PlayerHandAnimationEvent event)]
-                      
-                      (if (= Material/TNT (.material (.getItemInMainHand ^Player (.getPlayer  ^net.minestom.server.event.player.PlayerHandAnimationEvent event) )))
-                        (do ;(.setCancelled ^net.minestom.server.event.player.PlayerHandAnimationEvent event true) does nothing
-                          (if (> (- (System/currentTimeMillis) (get @cooldowns (keyword (.getUsername sender)))) 250)
-                          (do
-                            (.sendPacket sender (SetCooldownPacket. (.id Material/TNT) 5))
-                            (reset! cooldowns (assoc @cooldowns (keyword (.getUsername sender)) (System/currentTimeMillis)))
-                            (expl/summon-tnt ^Instance (.getInstance sender) ^Pos (.getPosition sender)
-                                             (let [pos (.direction (.getPosition sender))]
-                                               {:x (.x pos) :y (+ (.y pos) 0.5) :z (.z pos) :pitch (- 3 (rand-int 6)) :yaw (- 3 (rand-int 6))})
-                                             #(do
-                                                (db/set-prop! (.getUsername sender) :blocks-broken (+ (db/get-prop (.getUsername sender) :blocks-broken) %))
-                                                (db/set-prop! (.getUsername sender) :level (/ (Math/sqrt (db/get-prop (.getUsername sender) :blocks-broken)) 10))
-                                                (.setLevel sender (int (db/get-prop (.getUsername sender) :level)))
-                                                (.setExp sender (- (db/get-prop (.getUsername sender) :level) (int (db/get-prop (.getUsername sender) :level)))))
-                                             (db/get-prop (.getUsername sender) :power)
-                                             (db/get-prop (.getUsername sender) :dropstyle))))))
-                      (if (= Material/BOOK (.material (.getItemInMainHand ^Player (.getPlayer  ^net.minestom.server.event.player.PlayerHandAnimationEvent event) )))
-                        (.openInventory sender (gui/blockselectors 0))
-                        )
-                      (if (= Material/NETHER_STAR (.material (.getItemInMainHand ^Player (.getPlayer  ^net.minestom.server.event.player.PlayerHandAnimationEvent event) )))
-                        (.openInventory sender (gui/mainmenu #(.closeInventory ^Player (.getPlayer  ^net.minestom.server.event.player.PlayerHandAnimationEvent event))))
-                        )))))
 
-  (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.player.PlayerChatEvent
-                @chatfilter/filter)
-  (.addListener ^GlobalEventHandler gEventHandler PlayerBlockPlaceEvent
-                (reify
-                  java.util.function.Consumer
-                  (accept [this event]
-                    (let [sender ^Player (.getPlayer ^PlayerBlockPlaceEvent event)]
-                      (.consumeBlock ^PlayerBlockPlaceEvent event false)
-                      (if (= Block/TNT (.getBlock ^PlayerBlockPlaceEvent event))
-                        (.setCancelled ^PlayerBlockPlaceEvent event true)
-                        )
-                      ))))
 
-  (.addListener ^GlobalEventHandler gEventHandler net.minestom.server.event.item.ItemDropEvent
-                (reify
-                  java.util.function.Consumer
-                  (accept [this event]
-                    (let [sender ^Player (.getPlayer ^net.minestom.server.event.item.ItemDropEvent event)]
-                      (if (or (= Material/NETHER_STAR (.material (.getItemStack ^net.minestom.server.event.item.ItemDropEvent event))) (= Material/BOOK (.material (.getItemStack ^net.minestom.server.event.item.ItemDropEvent event))) (= Material/TNT (.material (.getItemStack ^net.minestom.server.event.item.ItemDropEvent event))) )
-                        (.setCancelled ^net.minestom.server.event.item.ItemDropEvent event true)
-                        )
-                      ))))
+
+
   
   (defn rotatebyplacement
     [block]

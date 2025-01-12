@@ -1,8 +1,6 @@
 (ns minestorm.commands
-  (:require [minestorm.gui :as gui]
-            [minestorm.constants :as consts]
+  (:require [minestorm.constants :as consts]
             [minestorm.imanager :as iman]
-            [minestorm.plots :as pworld]
             [minestorm.db :as db]
             [minestorm.steve :as steve])
 
@@ -20,17 +18,7 @@
   [^InstanceManager iManager]
   (def cmanager (MinecraftServer/getCommandManager))
   
-  (.register ^net.minestom.server.command.CommandManager cmanager ^Command
-             (let [p ^Command (proxy
-                                  [Command]
-                                  ["size"])]
-               (.setDefaultExecutor ^Command p (reify
-                                                 CommandExecutor
-                                                 (apply [this sender context]
-                                                   (let [sender ^Player  sender context ^CommandContext context]
-                                                     (if (or (.equals "femboywifey" (.getUsername (.asPlayer sender))) (.equals "Openmindedness" (.getUsername (.asPlayer sender))))
-                                                       (reset! consts/power (Integer/parseInt (nth (.split (.getInput context) " ") 1))))))))
-               ^Command p))
+
 
   *(.register ^net.minestom.server.command.CommandManager cmanager ^Command
              (let [p ^Command (proxy
@@ -54,16 +42,6 @@
                                                    (.saveChunksToStorage ^Instance (.getInstance (.asPlayer sender)))))))
                ^Command p))
 
-  (.register ^net.minestom.server.command.CommandManager cmanager ^Command
-             (let [p ^Command (proxy
-                                  [Command]
-                                  ["gui"])]
-               (.setDefaultExecutor ^Command p (reify
-                                                 CommandExecutor
-                                                 (apply [this sender context]
-                                                   (.openInventory (.asPlayer sender) (gui/mainmenu #(.closeInventory %)))
-                                                   )))
-               ^Command p))
     (.register ^net.minestom.server.command.CommandManager cmanager ^Command
              (let [p ^Command (proxy
                                   [Command]
@@ -146,30 +124,5 @@
                ^Command p))
   
   
-  (.register ^net.minestom.server.command.CommandManager cmanager ^Command
-             (let [p ^Command (proxy
-                                  [Command]
-                                  ["plot"])]
-               (.setDefaultExecutor ^Command p (reify
-                                                 CommandExecutor
-                                                 (apply [this sender context]
-                                                   
-                                                   (let [args (.split (.getInput context) " ")]
-                                                       (cond
-                                                         (= (count args) 1)
-                                                         (let [instance ^Instance (or (iman/getInstance (.getUsername (.asPlayer sender))) (pworld/mkworld iManager (.getUsername (.asPlayer sender)) (.getUuid (.asPlayer sender))))]
-                                                           (.setInstance (.asPlayer sender) instance)
-                                                           (db/set-prop! (.getUsername (.asPlayer sender)) :plot (.toString (.getUuid (.asPlayer sender)))))
-                                                         (= (count args) 2)
-                                                         (let [playeruuid (db/get-prop (nth args 1) :plot)]
-                                                           (let [instance ^Instance (or (iman/getInstance (nth args 1)) (pworld/mkworld iManager (nth args 1) (java.util.UUID/fromString playeruuid)))]
-                                                           (.setInstance (.asPlayer sender) instance (Pos. 0.0 5.0 0.0 0.0 0.0))
-                                                           
-                                                           )
-                                                         ))
-                                                       ))
-                                                     )
-                                                   
-                                                   )
-               ^Command p))
+
   )

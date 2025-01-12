@@ -1,12 +1,8 @@
 (ns minestorm.mainworld
-  (:require [minestorm.explode :as expl]
-            [minestorm.generators :as gen]
-            [minestorm.commands :as cmds]
+  (:require [minestorm.commands :as cmds]
             [minestorm.constants :as consts]
             [minestorm.pack :as pack]
             [minestorm.db :as db]
-            [minestorm.gui :as gui]
-            [minestorm.filter :as chatfilter]
             [minestorm.steve :as steve]
             [nrepl.server :as nrepl-server]
             ;[cider.nrepl :as cider]
@@ -56,7 +52,12 @@
                        (createChunk [this instance chunkx chunky]
                          (net.minestom.server.instance.LightingChunk. instance chunkx chunky))))
   (.setGenerator ^Instance instance
-                 (gen/mkgen))
+                 (reify
+                   net.minestom.server.instance.generator.Generator
+                   (generate [this unit]
+                     (-> unit
+                         .modifier
+                         (.fillHeight 0 40 Block/STONE)))))
 
 
   (.addListener (.eventNode instance) net.minestom.server.event.player.PlayerChunkUnloadEvent
