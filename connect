@@ -1,2 +1,0 @@
-clojure -Sdeps '{:deps {nrepl/nrepl {:mvn/version "1.3.0"}}}' -M -m nrepl.cmdline --connect --host ext1.minehut.me --port 10572
-# --tls-keys-file client.keys 
